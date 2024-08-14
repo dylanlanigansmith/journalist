@@ -1,0 +1,7 @@
+selenium==4.9.0
+pillow==9.5.0
+pyobjc>=10.3
+pyobjc-core>=10.3
+numpy
+pyautogui
+
