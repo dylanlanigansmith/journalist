@@ -4,4 +4,7 @@ pyobjc>=10.3
 pyobjc-core>=10.3
 numpy
 pyautogui
+colorama
+openai
 
+#this likely isnt valid
