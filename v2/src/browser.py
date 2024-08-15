@@ -73,7 +73,13 @@ def click_text(text):
     elements = driver.find_elements(By.XPATH, 
         f"//input[contains(@placeholder, '{find}') or contains(@value, '{find}') or contains(@name, '{find}')]"
     )
+
+    
 """
+
+def scroll():
+    driver.execute_script("window.scrollBy(0, window.innerHeight);")
+    time.sleep(0.2)
 
 def tester(url):
     # Define the text you are looking for
@@ -83,9 +89,12 @@ def tester(url):
     elements = driver.find_elements(By.XPATH, 
         f"//input[contains(@placeholder, '{find}') or contains(@value, '{find}') or contains(@name, '{find}')]"
     )
+    elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{escape_xpath_string(find)}')]")
 
+    
     click_text(find)
     for element in elements:
+        if element.tag_name != 'input': continue
         did_something = False
         #dsadssoagppspd python
         if element:
