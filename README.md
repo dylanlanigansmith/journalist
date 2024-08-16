@@ -1,4 +1,4 @@
-## Journalist - Multimodel Browser Agents
+## Journalist - Multimodal Browser Agents
 
 
 
