@@ -15,13 +15,15 @@ class Config:
     
     def create_default(self):
         default_config = {
-            'openapi_key': 'your_default_openai_api_key_here',
-            'test_url': '',
-            'test_prompt' : ''
+            'openapi_key': 'your_openai_api_key_here',
+            "test_url" : "https://en.wikipedia.org/wiki/Dassault_Falcon_20",
+            "test_prompt" : "What are the specs"
         }
         with open(self.filename, 'w') as config_file:
             json.dump(default_config, config_file, indent=4)
         print(f"{self.filename} created with default values.")
+        print("Please Update the Config and Run Again")
+        exit(0)
 
     def load(self):
         if not os.path.exists(self.filename):

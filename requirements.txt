@@ -6,5 +6,8 @@ numpy
 pyautogui
 colorama
 openai
+#sorry for using this non mac people
+ocrmac
+thefuzz
 
 #this likely isnt valid

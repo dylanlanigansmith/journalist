@@ -9,16 +9,32 @@ import base64
 from io import BytesIO
 import time
 import pyautogui
-options = webdriver.ChromeOptions()
-options.add_argument("window-size=1200x600")
+from colorama import Fore, Back, Style
+#options = webdriver.ChromeOptions()
+#options.add_argument("window-size=1200x600")
 
 driver = webdriver.Chrome()
+driver.set_window_position(0,0, windowHandle='current') #for consistent pyautogui clicks
+TIMEOUT=10
+SHORT_TIMEOUT=0.3
 
+
+def holdup(): #iowait 
+    time.sleep(SHORT_TIMEOUT)
 
 def click(element):
     driver.execute_script("arguments[0].click();", element)
+    holdup()
 
-TIMEOUT=10
+def scroll():
+    driver.execute_script("window.scrollBy(0, window.innerHeight);")
+    holdup()
+
+def panel_height(): #len of chrome header etc (offset for content)
+    return driver.execute_script('return window.outerHeight - window.innerHeight;')
+
+def url(): #Current Url 
+    return driver.current_url
 
 def img_to_base64(image, format="PNG"):
     buffered = BytesIO()
@@ -43,10 +59,18 @@ def screenshot_base64():
     img_str = base64.b64encode(screenshot.getvalue()).decode('utf-8')
     return img_str
 
+
+def error_message_tidy(error_message):
+    index = error_message.find('(Session info:')
+    if index != -1:
+        return error_message[:index].strip()
+    else:
+        return error_message.strip()
+
 def escape_xpath_string(s):
     return s.replace("'", "\\'").replace('"', '\\"')
 def click_text(text):
-    print(f"         click_text({text}): ", end = "")
+    print(f"         browser.click_text({text}): ", end = "")
     try:
         # we know page is fully loaded by now
         element = driver.find_element(By.XPATH, f"//*[contains(text(), '{escape_xpath_string(text)}')]")
@@ -57,12 +81,16 @@ def click_text(text):
             #element.click()
             driver.execute_script("arguments[0].click();", element)
             print("             >clicked successfully.")
-            
+            return text
         else:
-            print("         >Element not found.")
-        
+             print("not found") #never
     except Exception as e:
-           print(f"click_text: An error occurred: {e}")
+           print("not found")
+           #print(f"click_text: An error occurred: {str(e)}")
+           print(f"         {Back.YELLOW}browser.click_text: exception:{Style.RESET_ALL}{Fore.YELLOW}\n            {error_message_tidy(str(e))} {Style.RESET_ALL}")
+
+   
+    return ""
 
 
 #def test(url):
@@ -77,9 +105,7 @@ def click_text(text):
     
 """
 
-def scroll():
-    driver.execute_script("window.scrollBy(0, window.innerHeight);")
-    time.sleep(0.2)
+
 
 def tester(url):
     # Define the text you are looking for
@@ -132,7 +158,7 @@ def test_send_keys_to_designated_element(driver):
     assert driver.find_element(By.ID, "textInput").get_attribute('value') == "abc"  
 
 
-
+"""
 def search_thing(find, text, enter):
     print(f"         searchthing({find}, {text}, {enter}): ", end = "")
     try:
@@ -165,3 +191,4 @@ def search_thing(find, text, enter):
         
     except Exception as e:
            print(f"searchthing: An error occurred: {e}")
+"""
