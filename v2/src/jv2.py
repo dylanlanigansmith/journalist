@@ -122,7 +122,7 @@ def click_element_with_text(text_to_click):
             print(f"{Back.MAGENTA}{Style.BRIGHT}URL DIDN'T CHANGE WE COULD HAVE TRIED TO SAVE IT HERE!{Style.RESET_ALL}")
     if not len(result) or result == "": #i dont trust python
         result = click_element_with_text_ocr(text_to_click)
-        
+#OCR Might be best right now
 
     return result
 
