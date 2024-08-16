@@ -10,6 +10,7 @@ from io import BytesIO
 import time
 import pyautogui
 from colorama import Fore, Back, Style
+from thefuzz import fuzz, process
 #options = webdriver.ChromeOptions()
 #options.add_argument("window-size=1200x600")
 
@@ -69,12 +70,130 @@ def error_message_tidy(error_message):
 
 def escape_xpath_string(s):
     return s.replace("'", "\\'").replace('"', '\\"')
-def click_text(text):
+
+
+
+def find_matching_elements(elements, find):
+    print(f"\nfind_matching_text2({len(elements)} results, '{find}')")
+  
+    word_list = [e.text for e in elements]
+    print(word_list)
+    best = next((e for e in elements if e.text == find), None)
+    if best is not None:
+        print(f"found {best.text} direct match early")
+        return best
+    
+
+    out = process.extract(find, word_list, scorer=fuzz.ratio)   
+    if out is None:
+        print("no matches from extractOne found from list: ", word_list)
+        return None
+    
+    found = find
+    for opt in out:
+        match, ratio = opt
+        print(f"process  '{match}' {ratio} vs '{find}'")
+    found = out[0][0]
+    ratio= out[0][1]
+
+   #this is broken bc we actually want it to only do direct matches first for all cats, etc
+   #need a real big algorithm for this 
+   #lmao use another gpt
+
+
+    
+    best = next((e for e in elements if e.text == found), None)
+
+    if best is not None:
+        print(f"best match to '{find}' is '{best.text}' w/ ratio {ratio}")
+    else: 
+        print(f"couldn't find {found} in {elements}.. wtf!")
+
+    print("best=",best)
+    return best
+
+def click_text(text_to_click, dbg = False):
+    print(f"         browser.click_text({text_to_click}): ", end = "")
+    text = escape_xpath_string(text_to_click)
+    try:
+
+        priorities = [
+            'a',         # first priority direct links, goal is navigation
+            'button',    
+            'span',
+            'img',
+            'select',
+            'input',    
+            'form',
+            '*',         # last priority whatever we can get
+        ]
+        #might be faster to find * elements, then iterate that total list more, instead of running find_elements each time for worst case....
+        #hm
+        bests = []
+        for tag in priorities:
+            if dbg: print(f"{Back.WHITE}{Fore.RED} <{tag}> {Style.RESET_ALL}", end ="")
+            elements = driver.find_elements(By.XPATH, f"//{tag}[contains(text(), '{text}')]")
+            
+            if len(elements):
+                old_size = len(elements)
+                for element in elements:
+                    if not element.is_displayed():
+                        elements.remove(element)
+                print(f" old {old_size} new {len(elements)}")
+
+                if not len(elements):
+                    print("we empty")
+                    continue
+
+
+                if dbg: 
+                    print(f"Found {len(elements)} '{tag}' element(s) with text '{text}':")
+                    for element in elements:
+                        print(f"  - Tag: {element.tag_name}, Text: '{element.text}'")
+
+                # could do fuzzy here like in ocr if we want..
+                best_element = find_matching_elements(elements, text)
+
+                if best_element is None: continue #best_element =  elements[0]
+                print(f"             >found <{tag}> {best_element.tag_name}, text: '{best_element.text} ")
+                bests.append(best_element)
+            else: print(f" elements = {type(elements)}")
+        if len(bests):
+            if dbg: print("bests = ", len(bests))
+            best_texts=[b.text for b in bests ]
+            if dbg: 
+                for best in bests:
+                    print(f"<{best.tag_name}> '{best.text}'")
+            
+            winner, final_ratio = process.extractOne(text, best_texts, scorer=fuzz.ratio, score_cutoff=20)
+            #should check duplicates first
+            final = next((e for e in elements if e.text == winner), None) #find element with best text
+            assert(final is not None)
+         
+            #final = bests[0]
+            
+            print(f"best match to {Fore.GREEN}\"{winner}\"{Style.RESET_ALL}  !! to_find='{text}' is {Fore.GREEN}<{final.tag_name}> '{final.text}'{Style.RESET_ALL} w/ ratio {final_ratio}")
+            click(final)
+            print(f"             {Fore.GREEN}>clicked successfully.{Style.RESET_ALL}")
+            return text    
+             
+               
+          
+ 
+        print("         >No prioritized elements found.")
+        
+    except (Exception) as e:
+        print("         >An error occurred.")
+        print(f"         {Back.YELLOW}browser.click_text: exception:{Style.RESET_ALL}{Fore.YELLOW}\n            {error_message_tidy(str(e))} {Style.RESET_ALL}")
+
+    return ""
+
+
+def click_text_old(text):
     print(f"         browser.click_text({text}): ", end = "")
     try:
         # we know page is fully loaded by now
         element = driver.find_element(By.XPATH, f"//*[contains(text(), '{escape_xpath_string(text)}')]")
-        
         
         if element:
             print(f"found '{element.tag_name}' element w/ text '{element.text}'")
@@ -89,33 +208,32 @@ def click_text(text):
            #print(f"click_text: An error occurred: {str(e)}")
            print(f"         {Back.YELLOW}browser.click_text: exception:{Style.RESET_ALL}{Fore.YELLOW}\n            {error_message_tidy(str(e))} {Style.RESET_ALL}")
 
-   
     return ""
 
+def test_send_keys_to_designated_element(driver):
+    driver.get('https://selenium.dev/selenium/web/single_text_input.html')
+    driver.find_element(By.TAG_NAME, "body").click()
 
-#def test(url):
-#    element = driver.find_element(By.XPATH, f"//*[contains(text(), '{escape_xpath_string("test")}')]")
-#    return element
-"""
-    # XPath query to search for the text in multiple attributes
-    elements = driver.find_elements(By.XPATH, 
-        f"//input[contains(@placeholder, '{find}') or contains(@value, '{find}') or contains(@name, '{find}')]"
-    )
+    text_input = driver.find_element(By.ID, "textInput")
+    ActionChains(driver)\
+        .send_keys_to_element(text_input, "abc")\
+        .perform()
 
-    
-"""
+    assert driver.find_element(By.ID, "textInput").get_attribute('value') == "abc"  
 
 
 
+#IGNORE OLD NOT USED 
 def tester(url):
     # Define the text you are looking for
     find = 'What are you looking for?'
-
-  # XPath query to search for the text in multiple attributes
+    assert(False)
+  #search for the text in multiple attributes
     elements = driver.find_elements(By.XPATH, 
         f"//input[contains(@placeholder, '{find}') or contains(@value, '{find}') or contains(@name, '{find}')]"
     )
     elements = driver.find_elements(By.XPATH, f"//*[contains(text(), '{escape_xpath_string(find)}')]")
+    #use priority thing above, but then run up parents for text fields...
 
     
     click_text(find)
@@ -145,17 +263,6 @@ def tester(url):
             #click(element.parent)
             print("nope.. maybe?")
     
-
-def test_send_keys_to_designated_element(driver):
-    driver.get('https://selenium.dev/selenium/web/single_text_input.html')
-    driver.find_element(By.TAG_NAME, "body").click()
-
-    text_input = driver.find_element(By.ID, "textInput")
-    ActionChains(driver)\
-        .send_keys_to_element(text_input, "abc")\
-        .perform()
-
-    assert driver.find_element(By.ID, "textInput").get_attribute('value') == "abc"  
 
 
 """

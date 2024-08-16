@@ -16,6 +16,7 @@ import textwrap
 
 from openai import OpenAI
 import ocr 
+import window_macos as window
 
 
 config = Config()
@@ -107,15 +108,22 @@ def click_element_with_text_dom(text_to_click):
 
 def click_element_with_text_ocr(text_to_click):
     print(f"click_element_with_text_ocr({text_to_click})")
-    return ocr.click_element_ocr(browser.screenshot(), text_to_click)
+    return ocr.click_element_ocr(browser.screenshot(), text_to_click, save_all=False)
 
 
 def click_element_with_text(text_to_click):
     result = ""
+    old_url = browser.url()
+
     result = click_element_with_text_dom(text_to_click)
+    browser.holdup() #jic for testing
+    if result != "": 
+        if old_url == browser.url():
+            print(f"{Back.MAGENTA}{Style.BRIGHT}URL DIDN'T CHANGE WE COULD HAVE TRIED TO SAVE IT HERE!{Style.RESET_ALL}")
     if not len(result) or result == "": #i dont trust python
         result = click_element_with_text_ocr(text_to_click)
-    
+        
+
     return result
 
 def click_element_with_text_function(args_str, call_id):
@@ -126,8 +134,26 @@ def click_element_with_text_function(args_str, call_id):
     if len(found):
         status = "found a match and tried to click text, if the url didn't change then try something else, that text might not be clickable"
 
-    result = { 'status' : status }
-    return create_function_result(result, call_id)
+    result = { 'status' : status, "url" : browser.url() } 
+    ret = create_function_result(result, call_id)
+    return ret
+"""    
+    messages.append({
+      "role": "user",
+      "content": [
+        {
+          "type": "image_url",
+          "image_url": { "url" : f"data:image/png;base64,{browser.screenshot_base64()}" }
+          
+        },
+        {
+          "type": "text",
+          "text": f"this is the updated view after running the  click_element_with_text() function you used. '"
+        }
+      ]
+    })
+"""
+    
 
 def scroll_down(args_str, call_id):
     args = json.loads(args_str)
@@ -164,15 +190,21 @@ def found_answer(reply, dbg = True):
     print(f"\n\n{Fore.GREEN} {answer} {Style.RESET_ALL}")
     return ""
 
+skip_user = False
+
 def loop(url, user_prompt):
+    global skip_user
     browser.get(url)
     browser.holdup()    
     global messages
-    click_element_with_text("World War II")
-    input('exit')
-    exit()
+    #click_element_with_text("History")
+   # browser.holdup()
+   # click_element_with_text_ocr(user_prompt)
+   # click_element_with_text("Second Sino")
+   # input('exit')
+   # exit()
 
-    messages.append({
+    if not skip_user: messages.append({
       "role": "user",
       "content": [
         {
@@ -186,14 +218,17 @@ def loop(url, user_prompt):
         }
       ]
     })
-
+    skip_user = False
     resp = call_ai( messages)
     
-    #print(resp)
+    print(resp)
     for choice in resp.choices:
         latest = choice.message
 
         messages.append(latest.to_dict())
+        jstr = json.dumps(latest.to_dict(), indent=4)
+
+        print(Fore.CYAN + textwrap.indent(jstr,"   ") + Style.RESET_ALL)
        # print(f"{Fore.YELLOW} message:{Style.RESET_ALL} {latest} \n")
         if latest.tool_calls and len(latest.tool_calls):
             print(Fore.RED, "Tool Call" + Style.RESET_ALL)
@@ -203,7 +238,7 @@ def loop(url, user_prompt):
 
                 args = call.function.arguments
                 assert(len(args))
-                result = { "status" : "function failed try another thing" }
+                result = { "status" : "function failed try another thing", "url" : browser.url() }
                 if func.name == "click_element_with_text":
                     result = click_element_with_text_function(args, call.id)
                 elif func.name == "scroll_down":
@@ -212,14 +247,16 @@ def loop(url, user_prompt):
                     result['status'] = "The function requested does not exist!?"
                     print("unknown/unhandled function! ", call)
                     create_function_result(result, call.id)
+                skip_user = True
+
+            
 
         elif latest.content:
             print(Back.CYAN, "Content" + Style.RESET_ALL)
             #print(latest.content)
             reply = json.loads(latest.content)
-            jstr = json.dumps(reply, indent=4)
-
-            print(Fore.CYAN + textwrap.indent(jstr,"   ") + Style.RESET_ALL)
+            browser.holdup()
+            print(Fore.CYAN + json.dumps(reply, indent=4) + Style.RESET_ALL)
             if 'text_to_click' not in reply or 'reasoning' not in reply or 'goal' not in reply:
                 raise KeyError("API Content Does Not Match Expected JSON Schema")
             
@@ -251,14 +288,14 @@ def main(url_base, user_prompt):
     client = OpenAI(api_key=config["openapi_key"])
 
     messages = oai.messages_start
- 
+    window.activate_chrome()
     #uncomment to test if selenium input works, 
     #   you can add pyautogui to same test to test that if needed
     #browser.test_send_keys_to_designated_element(driver)
     url = url_base
     its = 0
     last_prune=0
-    PRUNE_AFTER = 5
+    PRUNE_AFTER = 1
     while url != "":
         print(f"\n{Back.BLUE}[{its}]{Style.RESET_ALL}")
         if (its - last_prune ) > PRUNE_AFTER:
