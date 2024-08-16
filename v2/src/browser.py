@@ -19,11 +19,27 @@ driver.set_window_position(0,0, windowHandle='current') #for consistent pyautogu
 TIMEOUT=10
 SHORT_TIMEOUT=0.3
 
+def error_message_tidy(error_message):
+    error_message = str(error_message)
+    index = error_message.find('(Session info:')
+    if index != -1:
+        return error_message[:index].strip()
+    else:
+        return error_message.strip()
+def holdup(how_many = 1): #iowait 
+    time.sleep(SHORT_TIMEOUT * how_many)
 
-def holdup(): #iowait 
-    time.sleep(SHORT_TIMEOUT)
+def get_ready(timeout = TIMEOUT):
+    WebDriverWait(driver, timeout).until(
+        lambda d: d.execute_script('return document.readyState') == 'complete'
+    )
 
 def click(element):
+    try:
+        element.click()
+    except (Exception) as e:
+        print("         >An error occurred.")
+        print(f"         {Back.YELLOW}browser.click_text: exception:{Style.RESET_ALL}{Fore.YELLOW}\n            {error_message_tidy(str(e))} {Style.RESET_ALL}") 
     driver.execute_script("arguments[0].click();", element)
     holdup()
 
@@ -61,12 +77,7 @@ def screenshot_base64():
     return img_str
 
 
-def error_message_tidy(error_message):
-    index = error_message.find('(Session info:')
-    if index != -1:
-        return error_message[:index].strip()
-    else:
-        return error_message.strip()
+
 
 def escape_xpath_string(s):
     return s.replace("'", "\\'").replace('"', '\\"')
@@ -220,6 +231,162 @@ def test_send_keys_to_designated_element(driver):
         .perform()
 
     assert driver.find_element(By.ID, "textInput").get_attribute('value') == "abc"  
+
+#TODO merge all versions of this code to use one function!
+def find_best_elements_by_priority(text_to_find, priorities = ['a','button','span','input','form','*'], dbg = True):
+    print(f"find_best_elements_by_priority({text_to_find}, {priorities}, {dbg})")
+    text = escape_xpath_string(text_to_find)
+    try:
+        bests = []
+        for tag in priorities:
+            if dbg: print(f"        {Back.WHITE}{Fore.RED} <{tag}> {Style.RESET_ALL}", end ="")
+            all_elements = driver.find_elements(By.XPATH, f"//{tag}[contains(text(), '{text}')]")
+            
+            if len(all_elements):
+                elements = [elem for elem in all_elements if elem.is_displayed() and elem.is_enabled()]
+                if dbg: print(f"removed nonvis/non enabled elements: prev size = {len(all_elements)} new size = {len(elements)}")
+
+                if not len(elements):
+                    print(f"no visible elements found skipping {tag}..")
+                    continue
+
+
+                if dbg: 
+                    print(f"        Found {len(elements)} '{tag}' element(s) with text '{text}':")
+                    for element in elements:
+                        print(f"  - Tag: {element.tag_name}, Text: '{element.text}'")
+
+                # fuzzy needs work and standardizing 
+                best_element = find_matching_elements(elements, text)
+
+                if best_element is None: continue #best_element =  elements[0]
+                print(f"             >found <{tag}> {best_element.tag_name}, text: '{best_element.text} ")
+                bests.append(best_element)
+            else: print(f"no elements found for {tag} [elements = {type(all_elements)}]")
+        if len(bests):
+            if dbg: print("     bests = ", len(bests))
+            best_texts=[b.text for b in bests ]
+            if dbg: 
+                for best in bests:
+                    print(f"<{best.tag_name}> '{best.text}'")
+            
+            winner, final_ratio = process.extractOne(text, best_texts, scorer=fuzz.ratio, score_cutoff=20)
+            #should check duplicates first
+            final = next((e for e in elements if e.text == winner), None) #find element with best text
+            assert(final is not None)
+    
+            print(f"best match to {Fore.GREEN}\"{winner}\"{Style.RESET_ALL}  !! to_find='{text}' is {Fore.GREEN}<{final.tag_name}> '{final.text}'{Style.RESET_ALL} w/ ratio {final_ratio}")
+            assert(final in bests)
+            bests.remove(final)
+            bests.insert(0, final)
+            assert(bests[0] == final)
+
+            print(f"             {Fore.GREEN}>moved winner to front{Style.RESET_ALL}")
+            return bests    
+             
+               
+          
+ 
+        print("         >No prioritized elements found.")
+        
+    except (Exception) as e:
+        print("         >An error occurred.")
+        print(f"         {Back.YELLOW}browser.find_best_elements_by_priority: exception:{Style.RESET_ALL}{Fore.YELLOW}\n            {error_message_tidy(str(e))} {Style.RESET_ALL}")
+
+    return []
+
+
+def enter_text(text_to_find, text_to_enter, press_enter = True, dbg = True):
+    print(f"      {Back.CYAN}browser.enter_text({text_to_find}, {text_to_enter}, press={press_enter}):{Style.RESET_ALL} ", end = "")
+    priorities = [
+            'input',         # first priority direct links, goal is navigation
+            'textarea',    
+            'select',
+            'form',
+            '*',         # last priority whatever we can get
+        ]
+    text = escape_xpath_string(text_to_find)
+    best_elements = find_best_elements_by_priority(text_to_find, priorities)    
+    print("best elements = ", len(best_elements))
+    if True:
+        print("trying placeholder")
+        places = driver.find_elements(By.XPATH, f'//*[@placeholder="{text}"]')
+        print(len(places))
+
+        for placeholder in places:
+            best_elements.append(placeholder)
+    print("best elements = ", len(best_elements))
+    if True:
+        print(f"{Fore.BLUE} TRYING INPUTS {Style.RESET_ALL}")
+        inputs = driver.find_elements(By.CSS_SELECTOR, 
+        'input[type="text"], input[type="password"], input[type="email"], input[type="tel"], input[type="url"], input[type="search"], textarea, [contenteditable="true"]')
+
+        # Filter valid text inputs
+        valid_inputs = [elem for elem in inputs if elem.is_displayed() and elem.is_enabled()]
+        print(f"{len(valid_inputs)} valid inputs found")
+        # Print information about valid inputs
+        for elem in valid_inputs:
+            tag_name = elem.tag_name
+            attributes = {
+                'name': elem.get_attribute('name'),
+                'id': elem.get_attribute('id'),
+                'placeholder': elem.get_attribute('placeholder'),
+                'type': elem.get_attribute('type') if tag_name == 'input' else None,
+                'contenteditable': elem.get_attribute('contenteditable') if tag_name == 'div' or tag_name == 'span' else None
+            }
+            print(f"Input found: {attributes}")
+            element = elem #lazy
+            val = element.get_attribute("value") if tag_name == 'input' else None
+            if val is not None:
+                if val == text:
+                    print("found input with value matching")
+                    best_elements.append(elem)
+                    continue
+            placeholder = elem.get_attribute('placeholder')
+            if placeholder is not None:
+                if placeholder == text or placeholder == text_to_find:
+                    print("found input with placeholder matching")
+                    best_elements.append(elem)
+            typeat = elem.get_attribute('type') if tag_name == 'input' else None,
+            if typeat is not None:
+                if typeat == text.split(" ")[0].lower() or placeholder == text_to_find.split(" ")[0].lower():
+                    print("found input with type matching")
+                    best_elements.append(elem)
+
+    
+
+    if len(best_elements):
+        for element in best_elements:
+            print(f"Element Best  - Tag: {element.tag_name}, Text: '{element.text}'")
+            try:
+                click(element)
+                print("clicked")
+                if element.tag_name == 'input':
+                    value = element.get_attribute("value")
+                    if value is not None:
+                        print("input tag value = ", element.get_attribute("value"))
+                        if len(value):
+                            element.clear()
+                            print("CLEARED INPUT!")
+
+                element.send_keys(text_to_enter)
+                print("sent keys")
+                if element.tag_name == 'input':
+                    print("new input tag value = ", element.get_attribute("value"))
+                    value = element.get_attribute("value")
+                    
+                    if element.get_attribute("value") != text_to_enter:
+                        print("PAG")
+                        pyautogui.write(text_to_enter)  
+
+                if element.get_attribute("value") != text_to_enter: 
+                    print("     >seems like we failed for this one")
+                    continue  
+                print("wrote elem")
+                if press_enter: pyautogui.press('enter')
+                break
+            except (Exception) as e:
+                print(f"Error {error_message_tidy(e)}")
 
 
 

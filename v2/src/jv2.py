@@ -35,7 +35,7 @@ def call_ai(msgs, perf=True):
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=msgs,
-        temperature=1,
+        temperature=0.7,
         max_tokens=512,
         top_p=1,
         frequency_penalty=0,
@@ -89,7 +89,12 @@ def create_function_result(result, call_id):
 
 
 #THIS WAS REMOVED FOR NOW
-def enter_text_into_element(args_str):
+def enter_text_into_element(text_to_find, text_to_enter, press_enter = True):
+    click_element_with_text(text_to_find)
+    browser.enter_text(text_to_find, text_to_enter, press_enter)
+
+
+def enter_text_into_element_function(args_str):
     args = json.loads(args_str)
     print(f"DEPRECATED enter_text_into_elements({args})")
   #  args['text_to_find'], args['input_text'], args['press_enter']
@@ -108,7 +113,7 @@ def click_element_with_text_dom(text_to_click):
 
 def click_element_with_text_ocr(text_to_click):
     print(f"click_element_with_text_ocr({text_to_click})")
-    return ocr.click_element_ocr(browser.screenshot(), text_to_click, save_all=False)
+    return ocr.click_element_ocr(browser.screenshot(), text_to_click, save_all=True)
 
 
 def click_element_with_text(text_to_click):
@@ -120,6 +125,7 @@ def click_element_with_text(text_to_click):
     if result != "": 
         if old_url == browser.url():
             print(f"{Back.MAGENTA}{Style.BRIGHT}URL DIDN'T CHANGE WE COULD HAVE TRIED TO SAVE IT HERE!{Style.RESET_ALL}")
+            result=""
     if not len(result) or result == "": #i dont trust python
         result = click_element_with_text_ocr(text_to_click)
 #OCR Might be best right now
@@ -132,7 +138,7 @@ def click_element_with_text_function(args_str, call_id):
     found = click_element_with_text(args['text_to_click'])
     status = "tried to click text, could not find a match to click"
     if len(found):
-        status = "found a match and tried to click text, if the url didn't change then try something else, that text might not be clickable"
+        status = "found a match and tried to click text, if the url didn't change or the image content did not update, then try another keyword, that text might not be clickable"
 
     result = { 'status' : status, "url" : browser.url() } 
     ret = create_function_result(result, call_id)
@@ -192,6 +198,30 @@ def found_answer(reply, dbg = True):
 
 skip_user = False
 
+def decathlon_test():
+    browser.get("https://www.decathlon.ca/en")
+    browser.holdup()
+    click_element_with_text("Agree And Close")
+    click_element_with_text("Bags and backpacks")
+    click_element_with_text("Rolltop Hiking Backpack 23 L - NH Escape 500")
+    click_element_with_text("Add to cart")
+    click_element_with_text("View Cart")
+    click_element_with_text("Continue to delivery method")
+    browser.get_ready(5)
+    browser.holdup(2)
+    click_element_with_text("Become a member")
+    enter_text_into_element("Email","dylanlanigansmith@gmail.com", True)
+    click_element_with_text("Next")
+    enter_text_into_element("Password","Password1!", True)
+    click_element_with_text("Confirm")
+    browser.holdup()
+    click_element_with_text("I have read and understood")
+    browser.holdup()
+    click_element_with_text("Confirm and continue")
+    browser.holdup()
+    input('exit')
+    exit()
+
 def loop(url, user_prompt):
     global skip_user
     browser.get(url)
@@ -200,9 +230,8 @@ def loop(url, user_prompt):
     #click_element_with_text("History")
    # browser.holdup()
    # click_element_with_text_ocr(user_prompt)
-   # click_element_with_text("Second Sino")
-   # input('exit')
-   # exit()
+   
+    #decathlon_test()
 
     if not skip_user: messages.append({
       "role": "user",
@@ -247,14 +276,15 @@ def loop(url, user_prompt):
                     result['status'] = "The function requested does not exist!?"
                     print("unknown/unhandled function! ", call)
                     create_function_result(result, call.id)
-                skip_user = True
+                #skip_user = True
 
             
 
         elif latest.content:
             print(Back.CYAN, "Content" + Style.RESET_ALL)
             #print(latest.content)
-            reply = json.loads(latest.content)
+
+            reply = json.loads(latest.content.split("\n")[0])
             browser.holdup()
             print(Fore.CYAN + json.dumps(reply, indent=4) + Style.RESET_ALL)
             if 'text_to_click' not in reply or 'reasoning' not in reply or 'goal' not in reply:
@@ -295,10 +325,11 @@ def main(url_base, user_prompt):
     url = url_base
     its = 0
     last_prune=0
-    PRUNE_AFTER = 1
+    PRUNE_AFTER = 2
+    global skip_user
     while url != "":
         print(f"\n{Back.BLUE}[{its}]{Style.RESET_ALL}")
-        if (its - last_prune ) > PRUNE_AFTER:
+        if (its - last_prune ) > PRUNE_AFTER : #and not skip_user:
             remove_old_images()
             last_prune = its
         
@@ -310,7 +341,7 @@ def main(url_base, user_prompt):
         #input(Fore.RED + "CONTINUE..." + Style.RESET_ALL)
         
     print(Fore.YELLOW, end="")
-    print("exiting after {elapsed_time:.4f}s")
+    print(f"exiting after {elapsed_time:.4f}s")
     print(Style.RESET_ALL, end="")
     browser.driver.close()
     return 0
